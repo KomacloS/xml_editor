@@ -238,6 +238,11 @@ class PreviewPage(QWizardPage):
         wiz = self.wizard()
         df = wiz.df[[wiz.ref_col, wiz.tolp_col, wiz.toln_col]].copy()
 
+        # Drop rows with missing negative tolerance for preview purposes
+        if wiz.toln_col != wiz.tolp_col:
+            neg = df[wiz.toln_col].astype(str).str.strip()
+            df = df[neg.ne("") & neg.notna()]
+
         model = QStandardItemModel(df.shape[0], df.shape[1])
         model.setHorizontalHeaderLabels(df.columns.tolist())
         for r in range(df.shape[0]):
