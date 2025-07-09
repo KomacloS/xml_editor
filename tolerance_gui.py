@@ -76,8 +76,8 @@ def update_xml(
     """Patch tolerances in a single XML and return (new_path, list_of_refs_changed)."""
     # Build lookup dicts (references upper‑cased, stripped)
     refs = df[ref_col].astype(str).str.upper().str.strip()
-    tol_pos_series = df[tolp_col].astype(str)
-    tol_neg_series = df[toln_col].astype(str) if toln_col != tolp_col else tol_pos_series
+    tol_pos_series = df[tolp_col]
+    tol_neg_series = df[toln_col] if toln_col != tolp_col else tol_pos_series
 
     tol_pos_map: Dict[str, str] = dict(zip(refs, tol_pos_series))
     tol_neg_map: Dict[str, str] = dict(zip(refs, tol_neg_series))
@@ -91,22 +91,29 @@ def update_xml(
         if name not in tol_pos_map:
             continue  # not listed in BOM → leave untouched
 
-        tol_p = str(tol_pos_map[name]).strip()
+        tol_p_raw = tol_pos_map[name]
+        tol_p = "" if pd.isna(tol_p_raw) else str(tol_p_raw).strip()
         if tol_p == "":
             continue  # Tol+ blank in BOM → skip
 
-        tol_n = str(tol_neg_map.get(name, tol_p)).strip() or tol_p
+        tol_n_raw = tol_neg_map.get(name)
+        if pd.isna(tol_n_raw) or str(tol_n_raw).strip() == "":
+            tol_n = None  # keep existing value
+        else:
+            tol_n = str(tol_n_raw).strip()
 
         # Update attributes
         comp.set("TolP", tol_p)
-        comp.set("TolN", tol_n)
+        if tol_n is not None:
+            comp.set("TolN", tol_n)
 
         # Update nested parameters
         for prm in comp.iter("Parameter"):
             if prm.get("Name") == "TolPos":
                 prm.set("Value", tol_p)
             elif prm.get("Name") == "TolNeg":
-                prm.set("Value", tol_n)
+                if tol_n is not None:
+                    prm.set("Value", tol_n)
 
         updated.append(name)
 
