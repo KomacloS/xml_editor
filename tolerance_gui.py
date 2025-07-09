@@ -61,9 +61,10 @@ def load_bom(path: pathlib.Path) -> pd.DataFrame:
 
 
 def filter_nonempty(df: pd.DataFrame, tol_col: str) -> pd.DataFrame:
-    """Keep only rows where the *positive* tolerance column isn’t blank/NaN."""
-    series = df[tol_col].astype(str).str.strip()
-    return df[series.ne("") & series.notna()].copy()
+    """Return rows where the given tolerance column has a real value."""
+    series = df[tol_col]
+    mask = series.notna() & series.astype(str).str.strip().ne("")
+    return df[mask].copy()
 
 
 def update_xml(
@@ -240,8 +241,9 @@ class PreviewPage(QWizardPage):
 
         # Drop rows with missing negative tolerance for preview purposes
         if wiz.toln_col != wiz.tolp_col:
-            neg = df[wiz.toln_col].astype(str).str.strip()
-            df = df[neg.ne("") & neg.notna()]
+            neg_series = df[wiz.toln_col]
+            mask = neg_series.notna() & neg_series.astype(str).str.strip().ne("")
+            df = df[mask]
 
         model = QStandardItemModel(df.shape[0], df.shape[1])
         model.setHorizontalHeaderLabels(df.columns.tolist())
