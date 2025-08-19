@@ -7,17 +7,36 @@ from typing import Dict, List, Tuple, Optional
 import pandas as pd
 import xml.etree.ElementTree as ET
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (
-    QApplication, QWizard, QWizardPage, QFileDialog, QVBoxLayout, QLabel, QPushButton,
-    QListWidget, QComboBox, QTableView, QMessageBox, QProgressDialog, QHBoxLayout
-)
-from PyQt6.QtGui import QStandardItemModel, QStandardItem
+try:
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import (
+        QApplication, QWizard, QWizardPage, QFileDialog, QVBoxLayout, QLabel, QPushButton,
+        QListWidget, QComboBox, QTableView, QMessageBox, QProgressDialog, QHBoxLayout
+    )
+    from PyQt6.QtGui import QStandardItemModel, QStandardItem
+except Exception:  # pragma: no cover - allows import without PyQt installed
+    Qt = type('Qt', (), {'WindowModality': type('WM', (), {'ApplicationModal': None})})
+
+    class _Dummy:
+        def __init__(self, *a, **k):
+            pass
+
+        def __getattr__(self, name):
+            return _Dummy()
+
+        def __call__(self, *a, **k):
+            return _Dummy()
+
+    QApplication = QWizard = QWizardPage = QFileDialog = QVBoxLayout = QLabel = QPushButton = (
+        QListWidget
+    ) = QComboBox = QTableView = QMessageBox = QProgressDialog = QHBoxLayout = _Dummy
+    QStandardItemModel = QStandardItem = _Dummy
 
 from rules_profiles import compute_new_tolerance_pct
 
 RULE_NONE  = 'None (Use BOM TOLs)'
 RULE_MABAT = 'MABAT (R/C/L)'
+RULE_ELOP  = 'ELOP (R/C/L)'
 
 def load_bom(path: pathlib.Path) -> pd.DataFrame:
     if path.suffix.lower() in {'.csv', '.txt'}:
@@ -104,7 +123,7 @@ class FileSelectPage(QWizardPage):
         rule_row = QHBoxLayout()
         rule_row.addWidget(QLabel('Profile:'))
         self.rule_combo = QComboBox()
-        self.rule_combo.addItems([RULE_NONE, RULE_MABAT])
+        self.rule_combo.addItems([RULE_NONE, RULE_MABAT, RULE_ELOP])
         rule_row.addWidget(self.rule_combo)
 
         self.threshold_note = QLabel('MABAT: auto-applies R/C/L rules; resistor threshold is fixed at 0.1%')
@@ -169,7 +188,7 @@ class ColumnMapPage(QWizardPage):
 
         layout.addWidget(QLabel('Reference column (supports lists and ranges):'))
         layout.addWidget(self.combo_ref)
-        self.value_label = QLabel('Value column (required for MABAT):')
+        self.value_label = QLabel('Value column (required for selected profile):')
         layout.addWidget(self.value_label)
         layout.addWidget(self.combo_val)
         layout.addWidget(QLabel('Positive tolerance column (% number):'))
@@ -181,31 +200,42 @@ class ColumnMapPage(QWizardPage):
         cols = list(self.wizard().df_raw.columns)
         for cb in (self.combo_ref, self.combo_val, self.combo_pos, self.combo_neg):
             cb.clear(); cb.addItems(cols)
-        needs_value = self.wizard().rule == RULE_MABAT
+        needs_value = self.wizard().rule in (RULE_MABAT, RULE_ELOP)
         self.value_label.setEnabled(needs_value)
         self.combo_val.setEnabled(needs_value)
 
     def isComplete(self) -> bool:
         has_basic = bool(self.combo_ref.currentText() and self.combo_pos.currentText())
-        needs_value = self.wizard().rule == RULE_MABAT
+        needs_value = self.wizard().rule in (RULE_MABAT, RULE_ELOP)
         return has_basic and (bool(self.combo_val.currentText()) if needs_value else True)
 
     def _pick_subprofile_for_ref(self, ref: str) -> tuple[str, Optional[float]]:
         prefix = str(ref).strip().upper()[:1]
-        if prefix == 'R':
-            return 'MABAT (Resistors)', 0.1
-        if prefix == 'C':
-            return 'Capacitor (F)', None
-        if prefix == 'L':
-            return 'Inductor (H)', None
-        raise ValueError(f"Unsupported reference prefix for MABAT: '{ref}'")
+        rule = self.wizard().rule
+        if rule == RULE_MABAT:
+            if prefix == 'R':
+                return 'MABAT (Resistors)', 0.1
+            if prefix == 'C':
+                return 'Capacitor (F)', None
+            if prefix == 'L':
+                return 'Inductor (H)', None
+            raise ValueError(f"Unsupported reference prefix for MABAT: '{ref}'")
+        if rule == RULE_ELOP:
+            if prefix == 'R':
+                return 'ELOP (Resistors)', None
+            if prefix == 'C':
+                return 'ELOP (Capacitors)', None
+            if prefix == 'L':
+                return 'ELOP (Inductors)', None
+            raise ValueError(f"Unsupported reference prefix for ELOP: '{ref}'")
+        raise ValueError(f"Unsupported profile '{rule}'")
 
     def validatePage(self) -> bool:
         wiz = self.wizard()
         wiz.ref_col = self.combo_ref.currentText()
         wiz.tolp_col = self.combo_pos.currentText()
         wiz.toln_col = self.combo_neg.currentText()
-        wiz.val_col = self.combo_val.currentText() if wiz.rule == RULE_MABAT else None
+        wiz.val_col = self.combo_val.currentText() if wiz.rule in (RULE_MABAT, RULE_ELOP) else None
 
         df = wiz.df_raw.copy()
         rows = []
@@ -216,7 +246,7 @@ class ColumnMapPage(QWizardPage):
             for r in refs:
                 rows.append({
                     'Ref': str(r).strip(),
-                    'Value': row[wiz.val_col] if wiz.rule == RULE_MABAT else None,
+                    'Value': row[wiz.val_col] if wiz.rule in (RULE_MABAT, RULE_ELOP) else None,
                     'TolP': row[wiz.tolp_col],
                     'TolN': row[wiz.toln_col],
                 })
@@ -234,7 +264,7 @@ class ColumnMapPage(QWizardPage):
             wiz.df_prepared = df_exp[['Ref', 'NewTolP', 'NewTolN']].copy()
             return True
 
-        # MABAT composite: choose rules by reference prefix
+        # Composite profiles: choose rules by reference prefix
         errors = []
         new_rows = []
         for _, r in df_exp.iterrows():
@@ -242,7 +272,10 @@ class ColumnMapPage(QWizardPage):
             val = r['Value']
             tolp = try_float(r['TolP'])
             toln = try_float(r['TolN'])
-            if tolp is None and toln is None:
+            if wiz.rule == RULE_ELOP:
+                tolp = 0.0 if tolp is None else tolp
+                toln = tolp if toln is None else toln
+            elif tolp is None and toln is None:
                 continue
             try:
                 profile_name, thr = self._pick_subprofile_for_ref(ref)
@@ -263,7 +296,7 @@ class ColumnMapPage(QWizardPage):
 
         wiz.df_prepared = pd.DataFrame(new_rows)
         if wiz.df_prepared.empty:
-            QMessageBox.warning(self, 'No rows', 'No valid rows remained after applying MABAT.')
+            QMessageBox.warning(self, 'No rows', 'No valid rows remained after applying the profile.')
             return False
         return True
 

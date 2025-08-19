@@ -100,10 +100,31 @@ IND_STD = (
     TolRule(1.00e-03, 1.00e+00,  5.0, 25.0),
 )
 
+ELOP_RES = (
+    TolRule(100.0001, 1.00e+09, 5.0, 5.0),
+    TolRule(33.0,    100.0,    10.0, 10.0),
+    TolRule(0.0,      32.9999, 20.0, 20.0),
+)
+
+ELOP_CAP = (
+    TolRule(1.00e-07, 1.00e+03, 5.0, 5.0),
+    TolRule(3.00e-11, 9.99e-08,10.0,10.0),
+    TolRule(0.0,      2.999e-11,20.0,20.0),
+)
+
+ELOP_IND = (
+    TolRule(1.00e-01, 1.00e+09, 5.0, 5.0),
+    TolRule(1.00e-03, 9.99e-02,10.0,10.0),
+    TolRule(0.0,      9.99e-04,15.0,15.0),
+)
+
 PROFILES = {
     'MABAT (Resistors)': ('Ω', parse_res_value_to_ohms, tuple(MABAT_A), tuple(MABAT_B), 0.1),
     'Capacitor (F)':     ('F', parse_cap_value_to_farads, tuple(CAP_STD), None, None),
     'Inductor (H)':      ('H', parse_ind_value_to_henries, tuple(IND_STD), None, None),
+    'ELOP (Resistors)':  ('Ω', parse_res_value_to_ohms, tuple(ELOP_RES), None, None),
+    'ELOP (Capacitors)': ('F', parse_cap_value_to_farads, tuple(ELOP_CAP), None, None),
+    'ELOP (Inductors)':  ('H', parse_ind_value_to_henries, tuple(ELOP_IND), None, None),
 }
 
 def _select_rule(x: float, table: Tuple[TolRule, ...]) -> TolRule:
