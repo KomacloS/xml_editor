@@ -156,8 +156,12 @@ class FileSelectPage(QWizardPage):
         self.threshold_note = QLabel('MABAT: auto-applies R/C/L rules; resistor threshold is fixed at 0.1%')
         self.threshold_note.setStyleSheet('color: gray;')
 
+        self.btn_profile_constructor = QPushButton('Profile Constructor…')
+        self.btn_profile_constructor.clicked.connect(self.open_profile_constructor)
+
         layout.addLayout(rule_row)
         layout.addWidget(self.threshold_note)
+        layout.addWidget(self.btn_profile_constructor)
         layout.addWidget(btn_add_xml)
         layout.addWidget(self.xml_list)
         layout.addWidget(self.use_xml_bom)
@@ -191,6 +195,15 @@ class FileSelectPage(QWizardPage):
             self.bom_path = pathlib.Path(f)
             self.bom_label.setText(str(self.bom_path))
             self.completeChanged.emit()
+
+    def open_profile_constructor(self):
+        try:
+            from profile_constructor_gui import ProfileConstructorWindow
+        except Exception as e:  # pragma: no cover - import fallback
+            QMessageBox.critical(self, 'Error', f'Profile constructor GUI not available: {e}')
+            return
+        self._constructor_win = ProfileConstructorWindow()
+        self._constructor_win.show()
 
     def initializePage(self):
         self.xml_paths = []
