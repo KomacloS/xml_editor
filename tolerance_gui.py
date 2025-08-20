@@ -11,7 +11,8 @@ try:
     from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import (
         QApplication, QWizard, QWizardPage, QFileDialog, QVBoxLayout, QLabel, QPushButton,
-        QListWidget, QComboBox, QTableView, QMessageBox, QProgressDialog, QHBoxLayout
+        QListWidget, QComboBox, QTableView, QMessageBox, QProgressDialog, QHBoxLayout,
+        QCheckBox
     )
     from PyQt6.QtGui import QStandardItemModel, QStandardItem
 except Exception:  # pragma: no cover - allows import without PyQt installed
@@ -29,14 +30,14 @@ except Exception:  # pragma: no cover - allows import without PyQt installed
 
     QApplication = QWizard = QWizardPage = QFileDialog = QVBoxLayout = QLabel = QPushButton = (
         QListWidget
-    ) = QComboBox = QTableView = QMessageBox = QProgressDialog = QHBoxLayout = _Dummy
+    ) = QComboBox = QTableView = QMessageBox = QProgressDialog = QHBoxLayout = QCheckBox = _Dummy
     QStandardItemModel = QStandardItem = _Dummy
 
-from rules_profiles import compute_new_tolerance_pct
+from rules_profiles import compute_new_tolerance_pct_for_ref
 
 RULE_NONE  = 'None (Use BOM TOLs)'
-RULE_MABAT = 'MABAT (R/C/L)'
-RULE_ELOP  = 'ELOP (R/C/L)'
+RULE_MABAT = 'MABAT'
+RULE_ELOP  = 'ELOP'
 
 def load_bom(path: pathlib.Path) -> pd.DataFrame:
     if path.suffix.lower() in {'.csv', '.txt'}:
@@ -57,6 +58,29 @@ def try_float(x: object) -> Optional[float]:
         return None
 
 _range_re = re.compile(r'^([A-Za-z]+)(\d+)\s*-\s*(?:([A-Za-z]+)?(\d+))$')
+
+
+def build_df_from_xml(xml_paths: List[pathlib.Path]) -> pd.DataFrame:
+    """Build a BOM-like DataFrame from one or more XML component files."""
+
+    rows: List[Dict[str, object]] = []
+    for path in xml_paths:
+        try:
+            tree = ET.parse(path)
+        except Exception:
+            continue
+        root = tree.getroot()
+        for comp in root.iter('Component'):
+            ref = comp.get('Name', '').strip()
+            tolp = comp.get('TolP', '')
+            toln = comp.get('TolN', '')
+            val = None
+            for prm in comp.iter('Parameter'):
+                if prm.get('Name') == 'Value':
+                    val = prm.get('Value')
+                    break
+            rows.append({'Ref': ref, 'Value': val, 'TolP': tolp, 'TolN': toln})
+    return pd.DataFrame(rows)
 
 def expand_ref_expr(expr: object) -> List[str]:
     """Accepts 'R1,R3,R7' and ranges 'R1-R10'/'R1-10'."""
@@ -116,9 +140,12 @@ class FileSelectPage(QWizardPage):
         btn_add_xml = QPushButton('Add XML files…')
         btn_add_xml.clicked.connect(self.add_xml_files)
 
+        self.use_xml_bom = QCheckBox('Use XML files as BOM')
+        self.use_xml_bom.stateChanged.connect(self._toggle_xml_bom)
+
         self.bom_label = QLabel('<i>No BOM selected</i>')
-        btn_bom = QPushButton('Choose BOM file…')
-        btn_bom.clicked.connect(self.choose_bom_file)
+        self.btn_bom = QPushButton('Choose BOM file…')
+        self.btn_bom.clicked.connect(self.choose_bom_file)
 
         rule_row = QHBoxLayout()
         rule_row.addWidget(QLabel('Profile:'))
@@ -133,7 +160,8 @@ class FileSelectPage(QWizardPage):
         layout.addWidget(self.threshold_note)
         layout.addWidget(btn_add_xml)
         layout.addWidget(self.xml_list)
-        layout.addWidget(btn_bom)
+        layout.addWidget(self.use_xml_bom)
+        layout.addWidget(self.btn_bom)
         layout.addWidget(self.bom_label)
 
         self.rule_combo.currentTextChanged.connect(self._rule_changed)
@@ -141,6 +169,12 @@ class FileSelectPage(QWizardPage):
 
     def _rule_changed(self, txt: str):
         self.threshold_note.setVisible(txt == RULE_MABAT)
+
+    def _toggle_xml_bom(self):
+        use_xml = self.use_xml_bom.isChecked()
+        self.btn_bom.setEnabled(not use_xml)
+        self.bom_label.setEnabled(not use_xml)
+        self.completeChanged.emit()
 
     def add_xml_files(self):
         files, _ = QFileDialog.getOpenFileNames(self, 'Pick XML component files', '', 'XML files (*.xml)')
@@ -161,19 +195,30 @@ class FileSelectPage(QWizardPage):
     def initializePage(self):
         self.xml_paths = []
         self.bom_path = None
+        self.use_xml_bom.setChecked(False)
+        self.bom_label.setText('<i>No BOM selected</i>')
+        self.btn_bom.setEnabled(True)
+        self.bom_label.setEnabled(True)
 
     def isComplete(self) -> bool:
-        return bool(self.xml_paths and self.bom_path)
+        return bool(self.xml_paths) and (self.use_xml_bom.isChecked() or self.bom_path)
 
     def validatePage(self) -> bool:
+        wiz = self.wizard()
         try:
-            self.wizard().df_raw = load_bom(self.bom_path)
+            if self.use_xml_bom.isChecked():
+                df = build_df_from_xml(self.xml_paths)
+                wiz.df_raw = df
+                wiz.using_xml_bom = True
+            else:
+                wiz.df_raw = load_bom(self.bom_path)
+                wiz.using_xml_bom = False
         except Exception as e:
-            QMessageBox.critical(self, 'Error', f'Failed to load BOM: {e}')
+            QMessageBox.critical(self, 'Error', f'Failed to load data: {e}')
             return False
-        self.wizard().xml_paths = self.xml_paths
-        self.wizard().rule = self.rule_combo.currentText()
-        self.wizard().fixed_res_threshold = 0.1  # percent; fixed for MABAT resistors
+        wiz.xml_paths = self.xml_paths
+        wiz.rule = self.rule_combo.currentText()
+        wiz.fixed_res_threshold = 0.1  # percent; fixed for MABAT resistors
         return True
 
 class ColumnMapPage(QWizardPage):
@@ -197,45 +242,41 @@ class ColumnMapPage(QWizardPage):
         layout.addWidget(self.combo_neg)
 
     def initializePage(self):
-        cols = list(self.wizard().df_raw.columns)
+        wiz = self.wizard()
+        cols = list(wiz.df_raw.columns)
         for cb in (self.combo_ref, self.combo_val, self.combo_pos, self.combo_neg):
             cb.clear(); cb.addItems(cols)
-        needs_value = self.wizard().rule in (RULE_MABAT, RULE_ELOP)
+        if getattr(wiz, 'using_xml_bom', False):
+            for cb, col in zip(
+                (self.combo_ref, self.combo_val, self.combo_pos, self.combo_neg),
+                ('Ref', 'Value', 'TolP', 'TolN'),
+            ):
+                cb.setCurrentText(col)
+                cb.setEnabled(False)
+        needs_value = wiz.rule in (RULE_MABAT, RULE_ELOP)
         self.value_label.setEnabled(needs_value)
-        self.combo_val.setEnabled(needs_value)
+        self.combo_val.setEnabled(needs_value and not getattr(wiz, 'using_xml_bom', False))
 
     def isComplete(self) -> bool:
+        wiz = self.wizard()
+        if getattr(wiz, 'using_xml_bom', False):
+            return True
         has_basic = bool(self.combo_ref.currentText() and self.combo_pos.currentText())
-        needs_value = self.wizard().rule in (RULE_MABAT, RULE_ELOP)
+        needs_value = wiz.rule in (RULE_MABAT, RULE_ELOP)
         return has_basic and (bool(self.combo_val.currentText()) if needs_value else True)
-
-    def _pick_subprofile_for_ref(self, ref: str) -> tuple[str, Optional[float]]:
-        prefix = str(ref).strip().upper()[:1]
-        rule = self.wizard().rule
-        if rule == RULE_MABAT:
-            if prefix == 'R':
-                return 'MABAT (Resistors)', 0.1
-            if prefix == 'C':
-                return 'Capacitor (F)', None
-            if prefix == 'L':
-                return 'Inductor (H)', None
-            raise ValueError(f"Unsupported reference prefix for MABAT: '{ref}'")
-        if rule == RULE_ELOP:
-            if prefix == 'R':
-                return 'ELOP (Resistors)', None
-            if prefix == 'C':
-                return 'ELOP (Capacitors)', None
-            if prefix == 'L':
-                return 'ELOP (Inductors)', None
-            raise ValueError(f"Unsupported reference prefix for ELOP: '{ref}'")
-        raise ValueError(f"Unsupported profile '{rule}'")
 
     def validatePage(self) -> bool:
         wiz = self.wizard()
-        wiz.ref_col = self.combo_ref.currentText()
-        wiz.tolp_col = self.combo_pos.currentText()
-        wiz.toln_col = self.combo_neg.currentText()
-        wiz.val_col = self.combo_val.currentText() if wiz.rule in (RULE_MABAT, RULE_ELOP) else None
+        if getattr(wiz, 'using_xml_bom', False):
+            wiz.ref_col = 'Ref'
+            wiz.tolp_col = 'TolP'
+            wiz.toln_col = 'TolN'
+            wiz.val_col = 'Value' if wiz.rule in (RULE_MABAT, RULE_ELOP) else None
+        else:
+            wiz.ref_col = self.combo_ref.currentText()
+            wiz.tolp_col = self.combo_pos.currentText()
+            wiz.toln_col = self.combo_neg.currentText()
+            wiz.val_col = self.combo_val.currentText() if wiz.rule in (RULE_MABAT, RULE_ELOP) else None
 
         df = wiz.df_raw.copy()
         rows = []
@@ -278,9 +319,16 @@ class ColumnMapPage(QWizardPage):
             elif tolp is None and toln is None:
                 continue
             try:
-                profile_name, thr = self._pick_subprofile_for_ref(ref)
-                newp = compute_new_tolerance_pct(profile_name, val, tolp, thr) if tolp is not None else None
-                newn = compute_new_tolerance_pct(profile_name, val, toln, thr) if toln is not None else newp
+                newp = (
+                    compute_new_tolerance_pct_for_ref(wiz.rule, ref, val, tolp)
+                    if tolp is not None
+                    else None
+                )
+                newn = (
+                    compute_new_tolerance_pct_for_ref(wiz.rule, ref, val, toln)
+                    if toln is not None
+                    else newp
+                )
                 if newp is None and newn is None:
                     continue
                 new_rows.append({'Ref': ref, 'NewTolP': newp, 'NewTolN': newn})
