@@ -1,39 +1,8 @@
 from __future__ import annotations
-
-"""GUI for building tolerance profile sets.
-
-The window allows the user to define tolerance rules for resistors, capacitors
-and inductors.  Values may be entered using standard SI prefixes (``m`` for
-milli, ``u``/``µ`` for micro, etc.).  A simple coverage checker ensures that the
-entered ranges cover the full span without gaps.
-"""
-
 import sys
 
-from rules_profiles import (
-    ComponentRules,
-    ProfileSet,
-    check_rules_cover,
-    make_tol_rule,
-    save_profile_set,
-)
-
-try:  # pragma: no cover - the GUI is optional for tests
-    from PyQt6.QtWidgets import (
-        QApplication,
-        QWidget,
-        QVBoxLayout,
-        QHBoxLayout,
-        QLabel,
-        QPushButton,
-        QTableWidget,
-        QTableWidgetItem,
-        QTabWidget,
-        QMessageBox,
-        QFileDialog,
-        QInputDialog,
-    )
-    from PyQt6.QtCore import Qt
+try:
+    from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel
 except Exception:  # pragma: no cover - allows import without PyQt installed
     class _Dummy:
         def __init__(self, *a, **k):
@@ -45,133 +14,25 @@ except Exception:  # pragma: no cover - allows import without PyQt installed
         def __call__(self, *a, **k):
             return _Dummy()
 
-    QApplication = QWidget = QVBoxLayout = QHBoxLayout = QLabel = QPushButton = (
-        QTableWidget
-    ) = QTableWidgetItem = QTabWidget = QMessageBox = QFileDialog = QInputDialog = _Dummy
-    Qt = type("Qt", (), {})
-
-
-class RuleTable(QWidget):
-    """Table widget used to enter rules for a single component type."""
-
-    def __init__(self, unit: str, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.unit = unit
-        layout = QVBoxLayout(self)
-
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["Min", "Max", "Ext %", "Max %"])
-        layout.addWidget(self.table)
-
-        btn_row = QHBoxLayout()
-        self.btn_add = QPushButton("Add Row")
-        self.btn_remove = QPushButton("Remove Row")
-        self.btn_check = QPushButton("Check Coverage")
-        self.btn_add.clicked.connect(self.add_row)
-        self.btn_remove.clicked.connect(self.remove_selected)
-        self.btn_check.clicked.connect(self.check)
-        for w in (self.btn_add, self.btn_remove, self.btn_check):
-            btn_row.addWidget(w)
-        btn_row.addStretch(1)
-        layout.addLayout(btn_row)
-
-    def add_row(self) -> None:
-        self.table.insertRow(self.table.rowCount())
-
-    def remove_selected(self) -> None:
-        row = self.table.currentRow()
-        if row >= 0:
-            self.table.removeRow(row)
-
-    def _cell_text(self, r: int, c: int) -> str:
-        item = self.table.item(r, c)
-        return item.text().strip() if item else ""
-
-    def get_rules(self):
-        rules = []
-        for r in range(self.table.rowCount()):
-            vals = [self._cell_text(r, c) for c in range(4)]
-            if any(v == "" for v in vals):
-                raise ValueError(f"Row {r+1} has empty fields")
-            rules.append(make_tol_rule(*vals))
-        return rules
-
-    def check(self) -> None:
-        try:
-            rules = self.get_rules()
-        except Exception as e:  # pragma: no cover - GUI feedback
-            QMessageBox.warning(self, "Invalid data", str(e))
-            return
-        errs = check_rules_cover(rules)
-        if errs:  # pragma: no cover - GUI feedback
-            QMessageBox.critical(self, "Coverage errors", "\n".join(errs))
-        else:  # pragma: no cover - GUI feedback
-            QMessageBox.information(self, "Coverage", "All ranges are contiguous.")
+    QApplication = QWidget = QVBoxLayout = QLabel = _Dummy
 
 
 class ProfileConstructorWindow(QWidget):
-    """Window that brings together rule tables for each component."""
+    """Simple placeholder window for constructing tolerance profiles."""
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Profile Constructor")
-
+        self.setWindowTitle('Profile Constructor')
         layout = QVBoxLayout(self)
-        self.tabs = QTabWidget()
-        self.res_tab = RuleTable("Ω")
-        self.cap_tab = RuleTable("F")
-        self.ind_tab = RuleTable("H")
-        self.tabs.addTab(self.res_tab, "Resistors")
-        self.tabs.addTab(self.cap_tab, "Capacitors")
-        self.tabs.addTab(self.ind_tab, "Inductors")
-        layout.addWidget(self.tabs)
-
-        self.btn_save = QPushButton("Save Profile Set…")
-        self.btn_save.clicked.connect(self.save_profile)
-        layout.addWidget(self.btn_save)
-
-    def save_profile(self) -> None:
-        try:
-            r_rules = self.res_tab.get_rules()
-            c_rules = self.cap_tab.get_rules()
-            i_rules = self.ind_tab.get_rules()
-        except Exception as e:  # pragma: no cover - GUI feedback
-            QMessageBox.warning(self, "Invalid data", str(e))
-            return
-
-        for name, rules in ("Resistor", r_rules), ("Capacitor", c_rules), ("Inductor", i_rules):
-            errs = check_rules_cover(rules)
-            if errs:  # pragma: no cover - GUI feedback
-                QMessageBox.critical(self, f"{name} errors", "\n".join(errs))
-                return
-
-        name, ok = QInputDialog.getText(self, "Profile name", "Profile set name:")
-        if not ok or not name.strip():
-            return
-
-        prof = ProfileSet(
-            name=name.strip(),
-            resistor=ComponentRules(table_a=tuple(r_rules)) if r_rules else None,
-            capacitor=ComponentRules(table_a=tuple(c_rules)) if c_rules else None,
-            inductor=ComponentRules(table_a=tuple(i_rules)) if i_rules else None,
-        )
-
-        path, _ = QFileDialog.getSaveFileName(self, "Save profile set", "", "JSON files (*.json)")
-        if path:
-            try:  # pragma: no cover - file IO
-                save_profile_set(prof, path)
-                QMessageBox.information(self, "Saved", f"Profile saved to {path}")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", str(e))
+        layout.addWidget(QLabel('Profile constructor GUI placeholder.'))
 
 
-def main() -> None:  # pragma: no cover - manual GUI launch
+def main() -> None:
     app = QApplication(sys.argv)
     w = ProfileConstructorWindow()
     w.show()
     sys.exit(app.exec())
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == '__main__':  # pragma: no cover - manual GUI launch
     main()
-
