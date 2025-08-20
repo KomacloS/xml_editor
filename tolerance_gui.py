@@ -32,11 +32,11 @@ except Exception:  # pragma: no cover - allows import without PyQt installed
     ) = QComboBox = QTableView = QMessageBox = QProgressDialog = QHBoxLayout = _Dummy
     QStandardItemModel = QStandardItem = _Dummy
 
-from rules_profiles import compute_new_tolerance_pct
+from rules_profiles import compute_new_tolerance_pct_for_ref
 
 RULE_NONE  = 'None (Use BOM TOLs)'
-RULE_MABAT = 'MABAT (R/C/L)'
-RULE_ELOP  = 'ELOP (R/C/L)'
+RULE_MABAT = 'MABAT'
+RULE_ELOP  = 'ELOP'
 
 def load_bom(path: pathlib.Path) -> pd.DataFrame:
     if path.suffix.lower() in {'.csv', '.txt'}:
@@ -209,27 +209,6 @@ class ColumnMapPage(QWizardPage):
         needs_value = self.wizard().rule in (RULE_MABAT, RULE_ELOP)
         return has_basic and (bool(self.combo_val.currentText()) if needs_value else True)
 
-    def _pick_subprofile_for_ref(self, ref: str) -> tuple[str, Optional[float]]:
-        prefix = str(ref).strip().upper()[:1]
-        rule = self.wizard().rule
-        if rule == RULE_MABAT:
-            if prefix == 'R':
-                return 'MABAT (Resistors)', 0.1
-            if prefix == 'C':
-                return 'Capacitor (F)', None
-            if prefix == 'L':
-                return 'Inductor (H)', None
-            raise ValueError(f"Unsupported reference prefix for MABAT: '{ref}'")
-        if rule == RULE_ELOP:
-            if prefix == 'R':
-                return 'ELOP (Resistors)', None
-            if prefix == 'C':
-                return 'ELOP (Capacitors)', None
-            if prefix == 'L':
-                return 'ELOP (Inductors)', None
-            raise ValueError(f"Unsupported reference prefix for ELOP: '{ref}'")
-        raise ValueError(f"Unsupported profile '{rule}'")
-
     def validatePage(self) -> bool:
         wiz = self.wizard()
         wiz.ref_col = self.combo_ref.currentText()
@@ -278,9 +257,16 @@ class ColumnMapPage(QWizardPage):
             elif tolp is None and toln is None:
                 continue
             try:
-                profile_name, thr = self._pick_subprofile_for_ref(ref)
-                newp = compute_new_tolerance_pct(profile_name, val, tolp, thr) if tolp is not None else None
-                newn = compute_new_tolerance_pct(profile_name, val, toln, thr) if toln is not None else newp
+                newp = (
+                    compute_new_tolerance_pct_for_ref(wiz.rule, ref, val, tolp)
+                    if tolp is not None
+                    else None
+                )
+                newn = (
+                    compute_new_tolerance_pct_for_ref(wiz.rule, ref, val, toln)
+                    if toln is not None
+                    else newp
+                )
                 if newp is None and newn is None:
                     continue
                 new_rows.append({'Ref': ref, 'NewTolP': newp, 'NewTolN': newn})
