@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, asdict
-from typing import Callable, Dict, Optional, Tuple, Union, Sequence, List
+from typing import Callable, Dict, Optional, Tuple, Union
 import json
 import pathlib
 import re
@@ -177,32 +177,6 @@ def make_tol_rule(vmin: Union[str, Number],
         float(extension_allowed_pct),
         float(max_allowed_pct),
     )
-
-
-def check_rules_cover(rules: Sequence[TolRule]) -> List[str]:
-    """Return a list of gap/ordering errors for ``rules``.
-
-    The rules are sorted by ``vmin`` and each consecutive range is checked so
-    that ``vmax`` of the previous rule touches or overlaps the ``vmin`` of the
-    next one.  An error is reported if a rule has ``vmin`` greater than or
-    equal to ``vmax`` or if a gap exists between two neighbouring rules.
-    """
-
-    errs: List[str] = []
-    if not rules:
-        return errs
-
-    rules_sorted = sorted(rules, key=lambda r: r.vmin)
-    prev = rules_sorted[0]
-    if prev.vmin >= prev.vmax:
-        errs.append(f"rule starting at {prev.vmin} has vmin >= vmax")
-    for curr in rules_sorted[1:]:
-        if curr.vmin >= curr.vmax:
-            errs.append(f"rule starting at {curr.vmin} has vmin >= vmax")
-        if prev.vmax < curr.vmin:
-            errs.append(f"gap between {prev.vmax} and {curr.vmin}")
-        prev = curr
-    return errs
 
 
 @dataclass(frozen=True)
