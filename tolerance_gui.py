@@ -33,11 +33,9 @@ except Exception:  # pragma: no cover - allows import without PyQt installed
     ) = QComboBox = QTableView = QMessageBox = QProgressDialog = QHBoxLayout = QCheckBox = _Dummy
     QStandardItemModel = QStandardItem = _Dummy
 
-from rules_profiles import compute_new_tolerance_pct_for_ref
+from rules_profiles import compute_new_tolerance_pct_for_ref, PROFILE_SETS
 
 RULE_NONE  = 'None (Use BOM TOLs)'
-RULE_MABAT = 'MABAT'
-RULE_ELOP  = 'ELOP'
 
 def load_bom(path: pathlib.Path) -> pd.DataFrame:
     if path.suffix.lower() in {'.csv', '.txt'}:
@@ -150,7 +148,7 @@ class FileSelectPage(QWizardPage):
         rule_row = QHBoxLayout()
         rule_row.addWidget(QLabel('Profile:'))
         self.rule_combo = QComboBox()
-        self.rule_combo.addItems([RULE_NONE, RULE_MABAT, RULE_ELOP])
+        self.refresh_profiles()
         rule_row.addWidget(self.rule_combo)
 
         self.threshold_note = QLabel('MABAT: auto-applies R/C/L rules; resistor threshold is fixed at 0.1%')
@@ -171,8 +169,13 @@ class FileSelectPage(QWizardPage):
         self.rule_combo.currentTextChanged.connect(self._rule_changed)
         self._rule_changed(self.rule_combo.currentText())
 
+    def refresh_profiles(self):
+        self.rule_combo.clear()
+        self.rule_combo.addItem(RULE_NONE)
+        self.rule_combo.addItems(sorted(PROFILE_SETS.keys()))
+
     def _rule_changed(self, txt: str):
-        self.threshold_note.setVisible(txt == RULE_MABAT)
+        self.threshold_note.setVisible(txt == 'MABAT')
 
     def _toggle_xml_bom(self):
         use_xml = self.use_xml_bom.isChecked()
@@ -203,9 +206,14 @@ class FileSelectPage(QWizardPage):
             QMessageBox.critical(self, 'Error', f'Profile constructor GUI not available: {e}')
             return
         self._constructor_win = ProfileConstructorWindow()
+        try:
+            self._constructor_win.destroyed.connect(self.refresh_profiles)
+        except Exception:
+            pass
         self._constructor_win.show()
 
     def initializePage(self):
+        self.refresh_profiles()
         self.xml_paths = []
         self.bom_path = None
         self.use_xml_bom.setChecked(False)
@@ -266,7 +274,7 @@ class ColumnMapPage(QWizardPage):
             ):
                 cb.setCurrentText(col)
                 cb.setEnabled(False)
-        needs_value = wiz.rule in (RULE_MABAT, RULE_ELOP)
+        needs_value = wiz.rule != RULE_NONE
         self.value_label.setEnabled(needs_value)
         self.combo_val.setEnabled(needs_value and not getattr(wiz, 'using_xml_bom', False))
 
@@ -275,7 +283,7 @@ class ColumnMapPage(QWizardPage):
         if getattr(wiz, 'using_xml_bom', False):
             return True
         has_basic = bool(self.combo_ref.currentText() and self.combo_pos.currentText())
-        needs_value = wiz.rule in (RULE_MABAT, RULE_ELOP)
+        needs_value = wiz.rule != RULE_NONE
         return has_basic and (bool(self.combo_val.currentText()) if needs_value else True)
 
     def validatePage(self) -> bool:
@@ -284,12 +292,12 @@ class ColumnMapPage(QWizardPage):
             wiz.ref_col = 'Ref'
             wiz.tolp_col = 'TolP'
             wiz.toln_col = 'TolN'
-            wiz.val_col = 'Value' if wiz.rule in (RULE_MABAT, RULE_ELOP) else None
+            wiz.val_col = 'Value' if wiz.rule != RULE_NONE else None
         else:
             wiz.ref_col = self.combo_ref.currentText()
             wiz.tolp_col = self.combo_pos.currentText()
             wiz.toln_col = self.combo_neg.currentText()
-            wiz.val_col = self.combo_val.currentText() if wiz.rule in (RULE_MABAT, RULE_ELOP) else None
+            wiz.val_col = self.combo_val.currentText() if wiz.rule != RULE_NONE else None
 
         df = wiz.df_raw.copy()
         rows = []
@@ -300,7 +308,7 @@ class ColumnMapPage(QWizardPage):
             for r in refs:
                 rows.append({
                     'Ref': str(r).strip(),
-                    'Value': row[wiz.val_col] if wiz.rule in (RULE_MABAT, RULE_ELOP) else None,
+                    'Value': row[wiz.val_col] if wiz.rule != RULE_NONE else None,
                     'TolP': row[wiz.tolp_col],
                     'TolN': row[wiz.toln_col],
                 })
@@ -326,7 +334,7 @@ class ColumnMapPage(QWizardPage):
             val = r['Value']
             tolp = try_float(r['TolP'])
             toln = try_float(r['TolN'])
-            if wiz.rule == RULE_ELOP:
+            if wiz.rule == 'ELOP':
                 tolp = 0.0 if tolp is None else tolp
                 toln = tolp if toln is None else toln
             elif tolp is None and toln is None:

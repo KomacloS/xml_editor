@@ -1,0 +1,72 @@
+{
+  "capacitor": {
+    "default_threshold_pct": null,
+    "table_a": [
+      {
+        "extension_allowed_pct": 5.0,
+        "max_allowed_pct": 5.0,
+        "vmax": 1000.0,
+        "vmin": 1e-07
+      },
+      {
+        "extension_allowed_pct": 10.0,
+        "max_allowed_pct": 10.0,
+        "vmax": 9.99e-08,
+        "vmin": 3e-11
+      },
+      {
+        "extension_allowed_pct": 20.0,
+        "max_allowed_pct": 20.0,
+        "vmax": 2.999e-11,
+        "vmin": 0.0
+      }
+    ]
+  },
+  "inductor": {
+    "default_threshold_pct": null,
+    "table_a": [
+      {
+        "extension_allowed_pct": 5.0,
+        "max_allowed_pct": 5.0,
+        "vmax": 1000000000.0,
+        "vmin": 0.1
+      },
+      {
+        "extension_allowed_pct": 10.0,
+        "max_allowed_pct": 10.0,
+        "vmax": 0.0999,
+        "vmin": 0.001
+      },
+      {
+        "extension_allowed_pct": 15.0,
+        "max_allowed_pct": 15.0,
+        "vmax": 0.000999,
+        "vmin": 0.0
+      }
+    ]
+  },
+  "name": "ELOP",
+  "resistor": {
+    "default_threshold_pct": null,
+    "table_a": [
+      {
+        "extension_allowed_pct": 5.0,
+        "max_allowed_pct": 5.0,
+        "vmax": 1000000000.0,
+        "vmin": 100.0001
+      },
+      {
+        "extension_allowed_pct": 10.0,
+        "max_allowed_pct": 10.0,
+        "vmax": 100.0,
+        "vmin": 33.0
+      },
+      {
+        "extension_allowed_pct": 20.0,
+        "max_allowed_pct": 20.0,
+        "vmax": 32.9999,
+        "vmin": 0.0
+      }
+    ]
+  }
+}

@@ -9,6 +9,7 @@ entered ranges cover the full span without gaps.
 """
 
 import sys
+import pathlib
 
 from rules_profiles import (
     ComponentRules,
@@ -16,6 +17,7 @@ from rules_profiles import (
     check_rules_cover,
     make_tol_rule,
     save_profile_set,
+    register_profile_set,
 )
 
 try:  # pragma: no cover - the GUI is optional for tests
@@ -186,10 +188,19 @@ class ProfileConstructorWindow(QWidget):
             inductor=ComponentRules(table_a=tuple(i_rules)) if i_rules else None,
         )
 
-        path, _ = QFileDialog.getSaveFileName(self, "Save profile set", "", "JSON files (*.json)")
+        folder = pathlib.Path(__file__).resolve().parent / "profiles"
+        folder.mkdir(exist_ok=True)
+        default = folder / f"{name.strip()}.json"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save profile set",
+            str(default),
+            "JSON files (*.json)",
+        )
         if path:
             try:  # pragma: no cover - file IO
                 save_profile_set(prof, path)
+                register_profile_set(prof)
                 QMessageBox.information(self, "Saved", f"Profile saved to {path}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", str(e))
