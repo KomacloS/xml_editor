@@ -10,6 +10,7 @@ Number = Union[int, float]
 # Registry of single-component profiles and profile sets
 PROFILES: Dict[str, "Profile"] = {}
 PROFILE_SETS: Dict[str, "ProfileSet"] = {}
+PROFILE_DIR = pathlib.Path(__file__).with_name("profiles")
 
 @dataclass(frozen=True)
 class TolRule:
@@ -342,75 +343,21 @@ def register_profile_set(ps: ProfileSet) -> None:
             )
         )
 
-MABAT_A = (
-    TolRule(0.005, 0.05, 19.9, 20.0),
-    TolRule(0.051, 3.99, 14.9, 15.0),
-    TolRule(4.0,   9.99,  9.9, 14.0),
-    TolRule(10.0,  99.9,  4.9,  5.0),
-    TolRule(100.0, 1999.0,2.9,  3.0),
-    TolRule(2000.0,10000.0,0.9, 1.0),
-)
-MABAT_B = (
-    TolRule(0.005, 0.05, 24.0, 25.0),
-    TolRule(0.051, 3.99, 19.0, 20.0),
-    TolRule(4.0,   9.99, 14.0, 15.0),
-    TolRule(10.0,  99.9,  9.0, 10.0),
-    TolRule(100.0, 1999.0,4.0,  5.0),
-    TolRule(2000.0,10000.0,2.0, 3.0),
-)
 
-CAP_STD = (
-    TolRule(1.00e-20, 4.99e-10, 20.0, 30.0),
-    TolRule(5.00e-10, 9.99e-09, 15.0, 25.0),
-    TolRule(1.00e-08, 9.99e-07,  5.0, 15.0),
-    TolRule(1.00e-06, 1.00e+00,  3.0, 13.0),
-)
+def load_profile_sets_from_folder(folder: Union[str, pathlib.Path]) -> None:
+    """Load and register all profile sets found in ``folder``."""
 
-IND_STD = (
-    TolRule(1.00e-05, 1.00e-03, 15.0, 35.0),
-    TolRule(1.00e-03, 1.00e+00,  5.0, 25.0),
-)
+    p = pathlib.Path(folder)
+    if not p.is_dir():
+        return
+    for js in p.glob('*.json'):
+        try:
+            ps = load_profile_set(js)
+            register_profile_set(ps)
+        except Exception:
+            continue
 
-ELOP_RES = (
-    TolRule(100.0001, 1.00e+09, 5.0, 5.0),
-    TolRule(33.0,    100.0,    10.0, 10.0),
-    TolRule(0.0,      32.9999, 20.0, 20.0),
-)
-
-ELOP_CAP = (
-    TolRule(1.00e-07, 1.00e+03, 5.0, 5.0),
-    TolRule(3.00e-11, 9.99e-08,10.0,10.0),
-    TolRule(0.0,      2.999e-11,20.0,20.0),
-)
-
-ELOP_IND = (
-    TolRule(1.00e-01, 1.00e+09, 5.0, 5.0),
-    TolRule(1.00e-03, 9.99e-02,10.0,10.0),
-    TolRule(0.0,      9.99e-04,15.0,15.0),
-)
-
-# Register built-in profile sets
-register_profile_set(
-    ProfileSet(
-        name='MABAT',
-        resistor=ComponentRules(
-            table_a=tuple(MABAT_A),
-            table_b=tuple(MABAT_B),
-            default_threshold_pct=0.1,
-        ),
-        capacitor=ComponentRules(table_a=tuple(CAP_STD)),
-        inductor=ComponentRules(table_a=tuple(IND_STD)),
-    )
-)
-
-register_profile_set(
-    ProfileSet(
-        name='ELOP',
-        resistor=ComponentRules(table_a=tuple(ELOP_RES)),
-        capacitor=ComponentRules(table_a=tuple(ELOP_CAP)),
-        inductor=ComponentRules(table_a=tuple(ELOP_IND)),
-    )
-)
+load_profile_sets_from_folder(PROFILE_DIR)
 
 def _select_rule(x: float, table: Tuple[TolRule, ...]) -> TolRule:
     for r in table:

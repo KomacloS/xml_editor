@@ -1,0 +1,128 @@
+{
+  "capacitor": {
+    "default_threshold_pct": null,
+    "table_a": [
+      {
+        "extension_allowed_pct": 20.0,
+        "max_allowed_pct": 30.0,
+        "vmax": 4.99e-10,
+        "vmin": 1e-20
+      },
+      {
+        "extension_allowed_pct": 15.0,
+        "max_allowed_pct": 25.0,
+        "vmax": 9.99e-09,
+        "vmin": 5e-10
+      },
+      {
+        "extension_allowed_pct": 5.0,
+        "max_allowed_pct": 15.0,
+        "vmax": 9.99e-07,
+        "vmin": 1e-08
+      },
+      {
+        "extension_allowed_pct": 3.0,
+        "max_allowed_pct": 13.0,
+        "vmax": 1.0,
+        "vmin": 1e-06
+      }
+    ]
+  },
+  "inductor": {
+    "default_threshold_pct": null,
+    "table_a": [
+      {
+        "extension_allowed_pct": 15.0,
+        "max_allowed_pct": 35.0,
+        "vmax": 0.001,
+        "vmin": 1e-05
+      },
+      {
+        "extension_allowed_pct": 5.0,
+        "max_allowed_pct": 25.0,
+        "vmax": 1.0,
+        "vmin": 0.001
+      }
+    ]
+  },
+  "name": "MABAT",
+  "resistor": {
+    "default_threshold_pct": 0.1,
+    "table_a": [
+      {
+        "extension_allowed_pct": 19.9,
+        "max_allowed_pct": 20.0,
+        "vmax": 0.05,
+        "vmin": 0.005
+      },
+      {
+        "extension_allowed_pct": 14.9,
+        "max_allowed_pct": 15.0,
+        "vmax": 3.99,
+        "vmin": 0.051
+      },
+      {
+        "extension_allowed_pct": 9.9,
+        "max_allowed_pct": 14.0,
+        "vmax": 9.99,
+        "vmin": 4.0
+      },
+      {
+        "extension_allowed_pct": 4.9,
+        "max_allowed_pct": 5.0,
+        "vmax": 99.9,
+        "vmin": 10.0
+      },
+      {
+        "extension_allowed_pct": 2.9,
+        "max_allowed_pct": 3.0,
+        "vmax": 1999.0,
+        "vmin": 100.0
+      },
+      {
+        "extension_allowed_pct": 0.9,
+        "max_allowed_pct": 1.0,
+        "vmax": 10000.0,
+        "vmin": 2000.0
+      }
+    ],
+    "table_b": [
+      {
+        "extension_allowed_pct": 24.0,
+        "max_allowed_pct": 25.0,
+        "vmax": 0.05,
+        "vmin": 0.005
+      },
+      {
+        "extension_allowed_pct": 19.0,
+        "max_allowed_pct": 20.0,
+        "vmax": 3.99,
+        "vmin": 0.051
+      },
+      {
+        "extension_allowed_pct": 14.0,
+        "max_allowed_pct": 15.0,
+        "vmax": 9.99,
+        "vmin": 4.0
+      },
+      {
+        "extension_allowed_pct": 9.0,
+        "max_allowed_pct": 10.0,
+        "vmax": 99.9,
+        "vmin": 10.0
+      },
+      {
+        "extension_allowed_pct": 4.0,
+        "max_allowed_pct": 5.0,
+        "vmax": 1999.0,
+        "vmin": 100.0
+      },
+      {
+        "extension_allowed_pct": 2.0,
+        "max_allowed_pct": 3.0,
+        "vmax": 10000.0,
+        "vmin": 2000.0
+      }
+    ]
+  }
+}
