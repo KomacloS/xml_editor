@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, asdict
 from typing import Callable, Dict, Optional, Tuple, Union, Sequence, List
+import sys
 import json
 import pathlib
 import re
@@ -10,7 +11,22 @@ Number = Union[int, float]
 # Registry of single-component profiles and profile sets
 PROFILES: Dict[str, "Profile"] = {}
 PROFILE_SETS: Dict[str, "ProfileSet"] = {}
-PROFILE_DIR = pathlib.Path(__file__).with_name("profiles")
+
+def _resolve_profiles_dir() -> pathlib.Path:
+    # 1) Profiles folder next to the executable (PyInstaller frozen app)
+    if getattr(sys, "frozen", False):
+        p = pathlib.Path(sys.executable).parent / "profiles"
+        if p.is_dir():
+            return p
+    # 2) Development/editable install: profiles next to this file
+    p = pathlib.Path(__file__).with_name("profiles")
+    if p.is_dir():
+        return p
+    # 3) Fallback: ./profiles relative to current working directory
+    p = pathlib.Path.cwd() / "profiles"
+    return p
+
+PROFILE_DIR = _resolve_profiles_dir()
 
 @dataclass(frozen=True)
 class TolRule:

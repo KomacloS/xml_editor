@@ -1,6 +1,7 @@
 from __future__ import annotations
 import sys
 import pathlib
+from pathlib import Path
 import re
 from typing import Dict, List, Tuple, Optional
 
@@ -129,9 +130,15 @@ def update_xml_with_map(xml_path: pathlib.Path, map_pos: Dict[str, float], map_n
 
 # ----------------------------- Wizard Pages ----------------------------- #
 class FileSelectPage(QWizardPage):
+
     def __init__(self):
         super().__init__()
         self.setTitle('Step 1 – Select files and profile')
+
+        # Ensure attributes exist before any slot runs
+        self.xml_paths = []          # list[pathlib.Path]
+        self.bom_path = None         # Optional[pathlib.Path]
+
         layout = QVBoxLayout(self)
 
         self.xml_list = QListWidget()
@@ -168,6 +175,14 @@ class FileSelectPage(QWizardPage):
 
         self.rule_combo.currentTextChanged.connect(self._rule_changed)
         self._rule_changed(self.rule_combo.currentText())
+
+        # NOTE: removed reference to non-existent self.path_edit
+        # (no connection here)
+
+
+    def _on_path_changed(self, _=None) -> None:
+        """Notify the wizard that page completeness may have changed."""
+        self.completeChanged.emit()
 
     def refresh_profiles(self):
         self.rule_combo.clear()
@@ -221,8 +236,16 @@ class FileSelectPage(QWizardPage):
         self.btn_bom.setEnabled(True)
         self.bom_label.setEnabled(True)
 
+
     def isComplete(self) -> bool:
-        return bool(self.xml_paths) and (self.use_xml_bom.isChecked() or self.bom_path)
+        """
+        True if:
+        - 'Use XML files as BOM' is checked AND at least one existing XML path is selected, OR
+        - It is unchecked AND a valid BOM file has been chosen.
+        """
+        if self.use_xml_bom.isChecked():
+            return bool(self.xml_paths) and all(getattr(p, "exists", lambda: False)() for p in self.xml_paths)
+        return bool(self.bom_path and getattr(self.bom_path, "exists", lambda: False)())
 
     def validatePage(self) -> bool:
         wiz = self.wizard()

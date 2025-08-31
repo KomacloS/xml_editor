@@ -82,7 +82,7 @@
       {
         "extension_allowed_pct": 0.9,
         "max_allowed_pct": 1.0,
-        "vmax": 10000.0,
+        "vmax": 10000000000000000.0,
         "vmin": 2000.0
       }
     ],
@@ -120,7 +120,7 @@
       {
         "extension_allowed_pct": 2.0,
         "max_allowed_pct": 3.0,
-        "vmax": 10000.0,
+        "vmax": 10000000000000000.0,
         "vmin": 2000.0
       }
     ]
