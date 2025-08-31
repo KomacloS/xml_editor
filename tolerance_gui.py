@@ -56,6 +56,25 @@ def try_float(x: object) -> Optional[float]:
     except Exception:
         return None
 
+
+def parse_numeric_value(value: object, unit: str = '') -> Optional[float]:
+    """Parse a numeric value from XML preserving scientific notation.
+
+    ``value`` is typically a string from a ``Value`` attribute.  If it can be
+    interpreted as a float the numeric value is returned; otherwise ``None`` is
+    returned and the caller may keep the original string.  The optional ``unit``
+    parameter is accepted for future use but currently does not affect the
+    result.
+    """
+
+    s = str(value).strip()
+    if s == '' or s.lower() == 'nan':
+        return None
+    try:
+        return float(s)
+    except Exception:
+        return None
+
 _range_re = re.compile(r'^([A-Za-z]+)(\d+)\s*-\s*(?:([A-Za-z]+)?(\d+))$')
 
 
@@ -76,7 +95,10 @@ def build_df_from_xml(xml_paths: List[pathlib.Path]) -> pd.DataFrame:
             val = None
             for prm in comp.iter('Parameter'):
                 if prm.get('Name') == 'Value':
-                    val = prm.get('Value')
+                    raw_val = prm.get('Value')
+                    unit = prm.get('Unit', '') if prm is not None else ''
+                    parsed = parse_numeric_value(raw_val, unit)
+                    val = parsed if parsed is not None else raw_val
                     break
             rows.append({'Ref': ref, 'Value': val, 'TolP': tolp, 'TolN': toln})
     return pd.DataFrame(rows)
@@ -354,7 +376,9 @@ class ColumnMapPage(QWizardPage):
         new_rows = []
         for _, r in df_exp.iterrows():
             ref = r['Ref']
-            val = r['Value']
+            val_raw = r['Value']
+            parsed_val = parse_numeric_value(val_raw)
+            val = parsed_val if parsed_val is not None else val_raw
             tolp = try_float(r['TolP'])
             toln = try_float(r['TolN'])
             if wiz.rule == 'ELOP':
