@@ -2,8 +2,10 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from typing import Callable, Dict, Optional, Tuple, Union, Sequence, List
 import sys
+import os
 import json
 import pathlib
+import shutil
 import re
 
 Number = Union[int, float]
@@ -12,21 +14,124 @@ Number = Union[int, float]
 PROFILES: Dict[str, "Profile"] = {}
 PROFILE_SETS: Dict[str, "ProfileSet"] = {}
 
+_CONFIG_DIR_NAME = 'ToleranceWizard'
+_CONFIG_FILE_NAME = 'settings.json'
+_ENV_OVERRIDE_KEY = 'TOLERANCE_PROFILES_DIR'
+
+
+def _expand_path(value: str) -> pathlib.Path:
+    return pathlib.Path(os.path.expandvars(value)).expanduser()
+
+
+
+def _config_file_path() -> pathlib.Path:
+    if sys.platform.startswith('win'):
+        root = pathlib.Path(os.environ.get('LOCALAPPDATA') or os.environ.get('APPDATA') or pathlib.Path.home())
+    elif sys.platform == 'darwin':
+        root = pathlib.Path.home() / 'Library' / 'Application Support'
+    else:
+        root = pathlib.Path(os.environ.get('XDG_CONFIG_HOME', pathlib.Path.home() / '.config'))
+    return root / _CONFIG_DIR_NAME / _CONFIG_FILE_NAME
+
+
+
+def _load_profiles_dir_from_config() -> Optional[pathlib.Path]:
+    cfg = _config_file_path()
+    if not cfg.exists():
+        return None
+    try:
+        data = json.loads(cfg.read_text(encoding='utf-8'))
+        raw = data.get('profiles_dir')
+        if isinstance(raw, str) and raw.strip():
+            return _expand_path(raw.strip())
+    except Exception:
+        return None
+    return None
+
+
+
+def _persist_profiles_dir(path: pathlib.Path) -> None:
+    cfg = _config_file_path()
+    try:
+        target = path.resolve()
+    except Exception:
+        target = path
+    try:
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(json.dumps({'profiles_dir': str(target)}, indent=2, sort_keys=True), encoding='utf-8')
+    except Exception:
+        pass
+
+
+
+def _seed_profiles_dir(target: pathlib.Path) -> pathlib.Path:
+    target.mkdir(parents=True, exist_ok=True)
+    source_root = pathlib.Path(getattr(sys, '_MEIPASS', pathlib.Path(__file__).parent))
+    packaged_profiles = source_root / 'profiles'
+    if packaged_profiles.is_dir():
+        for src in packaged_profiles.glob('*.json'):
+            dest = target / src.name
+            if not dest.exists():
+                shutil.copy2(src, dest)
+    return target
+
+
+
 def _resolve_profiles_dir() -> pathlib.Path:
-    # 1) Profiles folder next to the executable (PyInstaller frozen app)
-    if getattr(sys, "frozen", False):
-        p = pathlib.Path(sys.executable).parent / "profiles"
-        if p.is_dir():
-            return p
+    env_override = os.environ.get(_ENV_OVERRIDE_KEY)
+    if env_override:
+        target = _expand_path(env_override)
+        if getattr(sys, 'frozen', False):
+            seeded = _seed_profiles_dir(target)
+            try:
+                seeded = seeded.resolve()
+            except Exception:
+                pass
+            _persist_profiles_dir(seeded)
+            return seeded
+        return target
+
+    if getattr(sys, 'frozen', False):
+        target = _load_profiles_dir_from_config()
+        if target is None:
+            target = pathlib.Path(sys.executable).parent / 'profiles'
+        seeded = _seed_profiles_dir(target)
+        try:
+            seeded = seeded.resolve()
+        except Exception:
+            pass
+        _persist_profiles_dir(seeded)
+        return seeded
     # 2) Development/editable install: profiles next to this file
-    p = pathlib.Path(__file__).with_name("profiles")
+    p = pathlib.Path(__file__).with_name('profiles')
     if p.is_dir():
         return p
     # 3) Fallback: ./profiles relative to current working directory
-    p = pathlib.Path.cwd() / "profiles"
+    p = pathlib.Path.cwd() / 'profiles'
     return p
 
+
+
+
 PROFILE_DIR = _resolve_profiles_dir()
+
+def get_profiles_directory() -> pathlib.Path:
+    """Return the currently active profiles directory."""
+    return PROFILE_DIR
+
+
+def get_profiles_settings() -> Dict[str, object]:
+    """Provide diagnostic details about profile configuration."""
+    cfg = _config_file_path()
+    return {
+        'directory': PROFILE_DIR,
+        'config_path': cfg,
+        'config_exists': cfg.exists(),
+        'environment_override': os.environ.get(_ENV_OVERRIDE_KEY),
+        'environment_override_key': _ENV_OVERRIDE_KEY,
+        'is_frozen': bool(getattr(sys, 'frozen', False)),
+    }
+
 
 @dataclass(frozen=True)
 class TolRule:
@@ -360,6 +465,32 @@ def register_profile_set(ps: ProfileSet) -> None:
         )
 
 
+def refresh_profile_sets(folder: Union[str, pathlib.Path]) -> None:
+    '''Reload profile registry from `folder`.'''
+    PROFILES.clear()
+    PROFILE_SETS.clear()
+    load_profile_sets_from_folder(folder)
+
+
+def set_profiles_directory(new_dir: Union[str, pathlib.Path]) -> pathlib.Path:
+    '''Update the active profiles directory and refresh loaded data.'''
+    if os.environ.get(_ENV_OVERRIDE_KEY):
+        raise RuntimeError('Environment override is active; unable to change profiles directory via settings.')
+    target = _expand_path(str(new_dir))
+    seeded = _seed_profiles_dir(target)
+    try:
+        resolved = seeded.resolve()
+    except Exception:
+        resolved = seeded
+    _persist_profiles_dir(resolved)
+    global PROFILE_DIR
+    PROFILE_DIR = resolved
+    refresh_profile_sets(PROFILE_DIR)
+    return PROFILE_DIR
+
+
+
+
 def load_profile_sets_from_folder(folder: Union[str, pathlib.Path]) -> None:
     """Load and register all profile sets found in ``folder``."""
 
@@ -373,7 +504,7 @@ def load_profile_sets_from_folder(folder: Union[str, pathlib.Path]) -> None:
         except Exception:
             continue
 
-load_profile_sets_from_folder(PROFILE_DIR)
+refresh_profile_sets(PROFILE_DIR)
 
 def _select_rule(x: float, table: Tuple[TolRule, ...]) -> TolRule:
     for r in table:

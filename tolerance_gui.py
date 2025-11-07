@@ -13,7 +13,7 @@ try:
     from PyQt6.QtWidgets import (
         QApplication, QWizard, QWizardPage, QFileDialog, QVBoxLayout, QLabel, QPushButton,
         QListWidget, QComboBox, QTableView, QMessageBox, QProgressDialog, QHBoxLayout,
-        QCheckBox
+        QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QLineEdit
     )
     from PyQt6.QtGui import QStandardItemModel, QStandardItem
 except Exception:  # pragma: no cover - allows import without PyQt installed
@@ -31,12 +31,83 @@ except Exception:  # pragma: no cover - allows import without PyQt installed
 
     QApplication = QWizard = QWizardPage = QFileDialog = QVBoxLayout = QLabel = QPushButton = (
         QListWidget
-    ) = QComboBox = QTableView = QMessageBox = QProgressDialog = QHBoxLayout = QCheckBox = _Dummy
+    ) = QComboBox = QTableView = QMessageBox = QProgressDialog = QHBoxLayout = QCheckBox = QDialog = QDialogButtonBox = QFormLayout = QLineEdit = _Dummy
     QStandardItemModel = QStandardItem = _Dummy
 
-from rules_profiles import compute_new_tolerance_pct_for_ref, PROFILE_SETS
+from rules_profiles import (
+    compute_new_tolerance_pct_for_ref,
+    PROFILE_SETS,
+    get_profiles_settings,
+    set_profiles_directory,
+)
 
 RULE_NONE  = 'None (Use BOM TOLs)'
+
+class ConfigDialog(QDialog):
+    """Dialog that exposes profile configuration options."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Settings')
+        self._settings = get_profiles_settings()
+        self._env_override = self._settings.get('environment_override')
+        self.selected_dir: Optional[pathlib.Path] = None
+
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+        path_row = QHBoxLayout()
+        self.path_edit = QLineEdit(str(self._settings['directory']))
+        self.path_edit.setPlaceholderText('Folder containing profile JSON files')
+        self._browse_btn = QPushButton('Browse...')
+        self._browse_btn.clicked.connect(self._choose_directory)
+        path_row.addWidget(self.path_edit)
+        path_row.addWidget(self._browse_btn)
+        form.addRow('Profiles directory:', path_row)
+        layout.addLayout(form)
+
+        info_lines = []
+        cfg_path = self._settings['config_path']
+        info_lines.append(f'Config file: {cfg_path}')
+        if self._env_override:
+            key = self._settings.get('environment_override_key', 'TOLERANCE_PROFILES_DIR')
+            info_lines.append(f'Environment override {key} is active; changes are disabled.')
+        info_label = QLabel('\n'.join(str(x) for x in info_lines))
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        if self._env_override:
+            self.path_edit.setReadOnly(True)
+            self._browse_btn.setEnabled(False)
+
+    def _choose_directory(self) -> None:
+        current = self.path_edit.text().strip() or str(self._settings['directory'])
+        chosen = QFileDialog.getExistingDirectory(self, 'Select profiles folder', current)
+        if chosen:
+            self.path_edit.setText(chosen)
+
+    def accept(self) -> None:  # type: ignore[override]
+        if self._env_override:
+            original = self._settings['directory']
+            self.selected_dir = pathlib.Path(original) if not isinstance(original, pathlib.Path) else original
+            super().accept()
+            return
+        desired = self.path_edit.text().strip()
+        if not desired:
+            QMessageBox.warning(self, 'Missing folder', 'Please choose a profiles folder.')
+            return
+        try:
+            new_dir = set_profiles_directory(desired)
+        except Exception as exc:
+            QMessageBox.critical(self, 'Save failed', str(exc))
+            return
+        self.selected_dir = new_dir
+        super().accept()
+
 
 def load_bom(path: pathlib.Path) -> pd.DataFrame:
     if path.suffix.lower() in {'.csv', '.txt'}:
@@ -178,7 +249,12 @@ class FileSelectPage(QWizardPage):
         rule_row.addWidget(QLabel('Profile:'))
         self.rule_combo = QComboBox()
         self.refresh_profiles()
-        rule_row.addWidget(self.rule_combo)
+        rule_row.addWidget(self.rule_combo, 1)
+
+        self.btn_settings = QPushButton('Settings...')
+        self.btn_settings.clicked.connect(self.open_settings_dialog)
+        rule_row.addStretch(1)
+        rule_row.addWidget(self.btn_settings)
 
         self.threshold_note = QLabel('MABAT: auto-applies R/C/L rules; resistor threshold is fixed at 0.1%')
         self.threshold_note.setStyleSheet('color: gray;')
@@ -210,6 +286,26 @@ class FileSelectPage(QWizardPage):
         self.rule_combo.clear()
         self.rule_combo.addItem(RULE_NONE)
         self.rule_combo.addItems(sorted(PROFILE_SETS.keys()))
+
+    def open_settings_dialog(self) -> None:
+        current_selection = self.rule_combo.currentText()
+        before_dir = get_profiles_settings()['directory']
+        dlg = ConfigDialog(self)
+        result = dlg.exec()
+        if result and getattr(dlg, 'selected_dir', None) is not None:
+            self.refresh_profiles()
+            idx = self.rule_combo.findText(current_selection)
+            if idx == -1:
+                idx = 0
+            self.rule_combo.setCurrentIndex(idx)
+            self._rule_changed(self.rule_combo.currentText())
+            new_dir = dlg.selected_dir
+            try:
+                changed = pathlib.Path(new_dir) != pathlib.Path(before_dir)
+            except Exception:
+                changed = str(new_dir) != str(before_dir)
+            if changed:
+                QMessageBox.information(self, 'Profiles updated', f'Profiles folder is now\n{new_dir}')
 
     def _rule_changed(self, txt: str):
         self.threshold_note.setVisible(txt == 'MABAT')
@@ -404,11 +500,27 @@ class ColumnMapPage(QWizardPage):
                 errors.append(f"{ref}: {e}")
 
         if errors:
-            QMessageBox.critical(self, 'Value errors',
-                                 'Some rows could not be processed:\n- ' +
-                                 '\n- '.join(errors[:30]) +
-                                 ('' if len(errors) <= 30 else f"\n(+{len(errors)-30} more)"))
-            return False
+            preview = '\n- '.join(errors[:30])
+            more = '' if len(errors) <= 30 else f"\n(+{len(errors) - 30} more)"
+            message = 'Some rows could not be processed:\n- ' + preview + more
+            if getattr(QMessageBox, '__name__', '') != '_Dummy':
+                msg = QMessageBox(self)
+                try:
+                    msg.setIcon(QMessageBox.Icon.Warning)
+                except AttributeError:
+                    pass
+                msg.setWindowTitle('Value errors')
+                msg.setText(message)
+                msg.setInformativeText('Continue with valid rows only?')
+                msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                msg.setDefaultButton(QMessageBox.StandardButton.No)
+                msg.setDetailedText('\n'.join(errors))
+                result = msg.exec()
+                if result != QMessageBox.StandardButton.Yes:
+                    return False
+            else:
+                QMessageBox.critical(self, 'Value errors', message)
+                return False
 
         wiz.df_prepared = pd.DataFrame(new_rows)
         if wiz.df_prepared.empty:

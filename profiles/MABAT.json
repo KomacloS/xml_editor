@@ -35,7 +35,7 @@
         "extension_allowed_pct": 15.0,
         "max_allowed_pct": 35.0,
         "vmax": 0.001,
-        "vmin": 1e-05
+        "vmin": 1e-20
       },
       {
         "extension_allowed_pct": 5.0,

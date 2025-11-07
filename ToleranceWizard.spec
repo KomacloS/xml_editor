@@ -1,11 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import pathlib
+
+profiles_dir = pathlib.Path('profiles')
+profile_datas = [(str(p), 'profiles') for p in profiles_dir.glob('*.json')]
+
 
 a = Analysis(
     ['tolerance_gui.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=profile_datas,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
