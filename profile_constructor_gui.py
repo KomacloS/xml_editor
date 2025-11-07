@@ -37,7 +37,7 @@ try:  # pragma: no cover - the GUI is optional for tests
         QLineEdit,
         QComboBox,
     )
-    from PyQt6.QtCore import Qt
+    from PyQt6.QtCore import Qt, pyqtSignal
 except Exception:  # pragma: no cover - allows import without PyQt installed
     class _Dummy:
         def __init__(self, *a, **k):
@@ -48,6 +48,16 @@ except Exception:  # pragma: no cover - allows import without PyQt installed
 
         def __call__(self, *a, **k):
             return _Dummy()
+
+    class _Signal:
+        def connect(self, *a, **k):
+            pass
+
+        def emit(self, *a, **k):
+            pass
+
+    def pyqtSignal(*a, **k):  # type: ignore
+        return _Signal()
 
     QApplication = QWidget = QVBoxLayout = QHBoxLayout = QLabel = QPushButton = (
         QTableWidget
@@ -66,7 +76,7 @@ class ValueCell(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.edit = QLineEdit()
         self.prefix = QComboBox()
-        self.prefix.addItems(["", "m", "µ", "n", "p", "k", "M", "G"])
+        self.prefix.addItems(["", "p", "n", "u", "µ", "m", "K", "M", "G"])
         self.prefix.setFixedWidth(45)
         layout.addWidget(self.edit)
         layout.addWidget(self.prefix)
@@ -144,6 +154,8 @@ class RuleTable(QWidget):
 class ProfileConstructorWindow(QWidget):
     """Window that brings together rule tables for each component."""
 
+    profile_saved = pyqtSignal()
+
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Profile Constructor")
@@ -201,6 +213,10 @@ class ProfileConstructorWindow(QWidget):
             try:  # pragma: no cover - file IO
                 save_profile_set(prof, path)
                 register_profile_set(prof)
+                try:
+                    self.profile_saved.emit()
+                except Exception:
+                    pass
                 QMessageBox.information(self, "Saved", f"Profile saved to {path}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", str(e))
