@@ -244,10 +244,6 @@ class FileSelectPage(QWizardPage):
             return
         self._constructor_win = ProfileConstructorWindow()
         try:
-            self._constructor_win.profile_saved.connect(self.refresh_profiles)
-        except Exception:
-            pass
-        try:
             self._constructor_win.destroyed.connect(self.refresh_profiles)
         except Exception:
             pass
