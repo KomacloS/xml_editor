@@ -37,7 +37,7 @@ try:  # pragma: no cover - the GUI is optional for tests
         QLineEdit,
         QComboBox,
     )
-    from PyQt6.QtCore import Qt
+    from PyQt6.QtCore import Qt, pyqtSignal
 except Exception:  # pragma: no cover - allows import without PyQt installed
     class _Dummy:
         def __init__(self, *a, **k):
@@ -48,6 +48,16 @@ except Exception:  # pragma: no cover - allows import without PyQt installed
 
         def __call__(self, *a, **k):
             return _Dummy()
+
+    class _Signal:
+        def connect(self, *a, **k):
+            pass
+
+        def emit(self, *a, **k):
+            pass
+
+    def pyqtSignal(*a, **k):  # type: ignore
+        return _Signal()
 
     QApplication = QWidget = QVBoxLayout = QHBoxLayout = QLabel = QPushButton = (
         QTableWidget
@@ -66,7 +76,7 @@ class ValueCell(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.edit = QLineEdit()
         self.prefix = QComboBox()
-        self.prefix.addItems(["", "m", "µ", "n", "p", "k", "M", "G"])
+        self.prefix.addItems(["", "p", "n", "u", "µ", "m", "K", "M", "G"])
         self.prefix.setFixedWidth(45)
         layout.addWidget(self.edit)
         layout.addWidget(self.prefix)
@@ -144,6 +154,8 @@ class RuleTable(QWidget):
 class ProfileConstructorWindow(QWidget):
     """Window that brings together rule tables for each component."""
 
+    profile_saved = pyqtSignal(str)
+
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Profile Constructor")
@@ -178,11 +190,12 @@ class ProfileConstructorWindow(QWidget):
                 return
 
         name, ok = QInputDialog.getText(self, "Profile name", "Profile set name:")
-        if not ok or not name.strip():
+        name = name.strip()
+        if not ok or not name:
             return
 
         prof = ProfileSet(
-            name=name.strip(),
+            name=name,
             resistor=ComponentRules(table_a=tuple(r_rules)) if r_rules else None,
             capacitor=ComponentRules(table_a=tuple(c_rules)) if c_rules else None,
             inductor=ComponentRules(table_a=tuple(i_rules)) if i_rules else None,
@@ -190,7 +203,7 @@ class ProfileConstructorWindow(QWidget):
 
         folder = pathlib.Path(__file__).resolve().parent / "profiles"
         folder.mkdir(exist_ok=True)
-        default = folder / f"{name.strip()}.json"
+        default = folder / f"{name}.json"
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Save profile set",
@@ -201,6 +214,7 @@ class ProfileConstructorWindow(QWidget):
             try:  # pragma: no cover - file IO
                 save_profile_set(prof, path)
                 register_profile_set(prof)
+                self.profile_saved.emit(prof.name)
                 QMessageBox.information(self, "Saved", f"Profile saved to {path}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", str(e))

@@ -206,10 +206,28 @@ class FileSelectPage(QWizardPage):
         """Notify the wizard that page completeness may have changed."""
         self.completeChanged.emit()
 
-    def refresh_profiles(self):
-        self.rule_combo.clear()
-        self.rule_combo.addItem(RULE_NONE)
-        self.rule_combo.addItems(sorted(PROFILE_SETS.keys()))
+    def refresh_profiles(self, new_profile: object | None = None):
+        """Reload available profile sets and optionally select ``new_profile``."""
+
+        requested = None
+        if isinstance(new_profile, str):
+            requested = new_profile
+        current = self.rule_combo.currentText()
+        self.rule_combo.blockSignals(True)
+        try:
+            self.rule_combo.clear()
+            self.rule_combo.addItem(RULE_NONE)
+            names = sorted(PROFILE_SETS.keys())
+            self.rule_combo.addItems(names)
+
+            target = requested or current
+            if target and (target == RULE_NONE or target in PROFILE_SETS):
+                idx = self.rule_combo.findText(target)
+                if idx >= 0:
+                    self.rule_combo.setCurrentIndex(idx)
+        finally:
+            self.rule_combo.blockSignals(False)
+        self._rule_changed(self.rule_combo.currentText())
 
     def _rule_changed(self, txt: str):
         self.threshold_note.setVisible(txt == 'MABAT')
@@ -244,7 +262,11 @@ class FileSelectPage(QWizardPage):
             return
         self._constructor_win = ProfileConstructorWindow()
         try:
-            self._constructor_win.destroyed.connect(self.refresh_profiles)
+            self._constructor_win.profile_saved.connect(self.refresh_profiles)
+        except Exception:
+            pass
+        try:
+            self._constructor_win.destroyed.connect(lambda *_: self.refresh_profiles())
         except Exception:
             pass
         self._constructor_win.show()
