@@ -272,7 +272,9 @@ class FileSelectPage(QWizardPage):
         layout.addWidget(self.bom_label)
 
         self.rule_combo.currentTextChanged.connect(self._rule_changed)
-        self._rule_changed(self.rule_combo.currentText())
+        # Only update dependent UI after widgets exist
+        if hasattr(self, 'threshold_note'):
+            self._rule_changed(self.rule_combo.currentText())
 
         # NOTE: removed reference to non-existent self.path_edit
         # (no connection here)
@@ -283,27 +285,50 @@ class FileSelectPage(QWizardPage):
         self.completeChanged.emit()
 
     def refresh_profiles(self, new_profile: object | None = None):
-        """Reload available profile sets and optionally select ``new_profile``."""
+        """Reload available profile sets and optionally select ``new_profile``.
+        Safe even if widgets were destroyed (during teardown) or during early init.
+        """
 
-        requested = None
-        if isinstance(new_profile, str):
-            requested = new_profile
-        current = self.rule_combo.currentText()
-        self.rule_combo.blockSignals(True)
+        combo = getattr(self, 'rule_combo', None)
+        if combo is None:
+            return
+
         try:
-            self.rule_combo.clear()
-            self.rule_combo.addItem(RULE_NONE)
-            names = sorted(PROFILE_SETS.keys())
-            self.rule_combo.addItems(names)
+            current = combo.currentText()
+        except RuntimeError:
+            # Underlying Qt widget was deleted
+            return
 
-            target = requested or current
-            if target and (target == RULE_NONE or target in PROFILE_SETS):
-                idx = self.rule_combo.findText(target)
-                if idx >= 0:
-                    self.rule_combo.setCurrentIndex(idx)
-        finally:
-            self.rule_combo.blockSignals(False)
-        self._rule_changed(self.rule_combo.currentText())
+        requested = new_profile if isinstance(new_profile, str) else None
+
+        try:
+            combo.blockSignals(True)
+            try:
+                combo.clear()
+                combo.addItem(RULE_NONE)
+                names = sorted(PROFILE_SETS.keys())
+                combo.addItems(names)
+
+                target = requested or current
+                if target and (target == RULE_NONE or target in PROFILE_SETS):
+                    idx = combo.findText(target)
+                    if idx >= 0:
+                        combo.setCurrentIndex(idx)
+            finally:
+                # In case combo got deleted between calls
+                try:
+                    combo.blockSignals(False)
+                except RuntimeError:
+                    pass
+
+            if hasattr(self, 'threshold_note'):
+                try:
+                    self._rule_changed(combo.currentText())
+                except RuntimeError:
+                    pass
+        except RuntimeError:
+            # Combo got deleted mid-refresh; ignore
+            pass
 
     def open_settings_dialog(self) -> None:
         current_selection = self.rule_combo.currentText()
@@ -316,7 +341,8 @@ class FileSelectPage(QWizardPage):
             if idx == -1:
                 idx = 0
             self.rule_combo.setCurrentIndex(idx)
-            self._rule_changed(self.rule_combo.currentText())
+            if hasattr(self, 'threshold_note'):
+                self._rule_changed(self.rule_combo.currentText())
             new_dir = dlg.selected_dir
             try:
                 changed = pathlib.Path(new_dir) != pathlib.Path(before_dir)
