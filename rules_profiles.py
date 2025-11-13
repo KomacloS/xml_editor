@@ -508,10 +508,21 @@ def load_profile_sets_from_folder(folder: Union[str, pathlib.Path]) -> None:
 refresh_profile_sets(PROFILE_DIR)
 
 def _select_rule(x: float, table: Tuple[TolRule, ...]) -> TolRule:
-    for r in table:
-        if r.vmin <= x <= r.vmax:
+    """Pick the matching rule for ``x`` giving precedence to stricter ranges."""
+
+    if not table:
+        raise ValueError("no tolerance rules are defined")
+
+    last_index = len(table) - 1
+    for idx, r in enumerate(table):
+        upper_inclusive = idx == last_index
+        if r.vmin <= x < r.vmax:
             return r
-    raise ValueError(f"value {x} is out of supported range ({table[0].vmin}–{table[-1].vmax}).")
+        if upper_inclusive and r.vmin <= x <= r.vmax:
+            return r
+    raise ValueError(
+        f"value {x} is out of supported range ({table[0].vmin}–{table[-1].vmax})."
+    )
 
 def compute_new_tolerance_pct(profile_name: str,
                               value_text: Union[str, Number],
